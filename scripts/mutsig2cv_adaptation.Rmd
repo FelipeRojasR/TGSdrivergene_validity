@@ -1,0 +1,149 @@
+---
+title: "MutSig2CV re-adaptation"
+author: "Felipe Rojas Rodriguez"
+date:  "`r Sys.Date()`"
+output: 
+  html_document:
+    code_folding: show
+    toc: true
+    toc_float: true
+    toc_collapsed: true
+  toc_depth: 3  
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## MutSig2CV Background
+Mutsig2CV ([Lawrence *et al.*, 2014](https://www.nature.com/articles/nature12912)) algorithm has been widely used for driver detection for the past couple of years in many cancer and pan-cancer studies. By focusing on whole exome sequencing MutSig2CV calculates the “driverness” of genes by comparing the mutational frequency against expected mutational pattern based on the background mutational rate (BMR). For acquiring the software refer to the Cancer Genome Analysis site of the broad institute ([CGA site](https://software.broadinstitute.org/cancer/cga/mutsig)) and for specific details of installation refer to the [getzlab github repository](https://github.com/getzlab/MutSig2CV). Details of the effect of the MutSig2CV re-adaptation in the identification of driver genes in target genome sequencing please see **CITATION**.
+
+## Rationale
+Background mutational rate for MutSig2CV is the latest version of MutSig method by ... calculated across ...computing statistical testing for all available genes in the coverage/covariate files.
+
+Whole-exome for each sample is expected when default parameters and background files are used. We propose a simple re-implementation of MutSig2CV where the background files would be reduced to include only genes from a specified panel. In practice the files to change are coverage and covariates (new feature of MutSig2CV compared to older versions of MutSig). 
+Briefly, in both original files there is an extensive list of genes that are included in the analysis. We filter the files by match of HUGO symbol between gene panel and coverage/covariate files. Worthnoticing, all genes and the correponding gene names must be obtained from a hg19 build.
+
+
+```{r libraries, echo = TRUE, warning = FALSE, message = FALSE}
+list.of.packages <- c("dplyr", "readr")
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+if(length(new.packages)) install.packages(new.packages)
+
+library(dplyr)
+library(readr)
+```
+
+Here it is possible to import both the coverage and covariate files required for MutSig2CV usage. It is possible to download the original data from the official ([CGA site](https://software.broadinstitute.org/cancer/cga/mutsig)) website but we include the latest version of the files in MutSig2CV 1.41 (10/02/2022). 
+
+```{r importation, echo = TRUE, warning = FALSE, message = FALSE}
+coverage <- read_table(file = "../data/Mutsig_reimplementation/coverage_full_exome.txt")
+covariates <- read_table(file = "../data/Mutsig_reimplementation/covariates_full_exome.txt")
+
+
+
+# It is possible to include own gene panel, for this example we only include MSK-Impact gene set.
+# gene_panel <- read_table(file = "")
+set.seed(1234)
+gene_panel <- sample(unique(coverage$gene), size = 50)
+```
+
+Declare all the functions that will be used in the script. Two functions will be included:
+- adapt_target_genome_sequencing_files -> create the modified gene panel files applicable for both covariate and coverage files. Option to set the export == TRUE the output_path is required, full system path is expected.
+- included_excluded_genes -> Returns a table of the number of genes from the panel that overlap with each mutsig2cv file.
+
+```{r function declaration, echo=TRUE}
+#' adapt_target_genome_sequencing_files
+#'
+#' @param input import dataframe readable by dplyr.
+#' @param gene_panel vector of all the genes to be included in the panel for the target genome sequencing. It is recommended that the original file structure is preserved.
+#' @param output_path full system path readable by import/export functions, e.g. read_table or readr::write_tsv.
+#' @param file_to_modify "coverage" or "covariates" referring to the dataset used as input.
+#' @param export Required TRUE/FALSE argument.
+#'
+#' @description 
+#' `adapt_target_genome_sequencing_files` is a general function to transform both the COVERAGE and COVARIATE files from MutSig2CV from a whole exome sequencing to a modified target adapted dataset. Due to the structure of the coverage and covariates files only gene names can be used for filtering. 
+#' @examples 
+adapt_target_genome_sequencing_files <- function(input, 
+                                                 gene_panel,
+                                                 output_path = NULL, 
+                                                 file_to_modify = NULL,
+                                                 export = NULL){
+  output_reduced <- input %>% 
+    dplyr::filter(gene %in% gene_panel) ## based on the standard labeling of both coverage and covariate files we will 
+  
+  if (export == TRUE) {
+      if (file_to_modify == "coverage") {
+          readr::write_tsv(output_reduced, 
+                           file = paste(as.character(output_path),
+                                        "COVERAGE_reduced_to_panel.txt", sep = ""))
+        } else if (file_to_modify == "covariates") {
+          readr::write_tsv(output_reduced, 
+                           file = paste(as.character(output_path),
+                                        "COVARIATES_reduced_to_panel.txt", sep = ""))
+        }
+    } else if (export == FALSE) {
+        return(output_reduced)
+      }
+}
+
+# Test with dummy data produced in gene_panel
+adapt_target_genome_sequencing_files(input = coverage, gene_panel = gene_panel, export = FALSE)
+
+
+#' included_excluded_genes
+#'
+#' @param mutsig2cv_file either coverage or covariate files
+#' @param panel_vector Vector for the genes in the panel of targeted genome sequecing included in the analysis.
+#'
+#' @return
+#' @export
+#'
+#' @examples
+included_excluded_genes <- function(mutsig2cv_file, panel_vector){
+  table <- tibble(
+    grouping = c("included", "excluded"),
+    values = c(length(panel_vector[!(panel_vector %in% unique(mutsig2cv_file$gene))]), length(panel_vector[(panel_vector %in% unique(mutsig2cv_file$gene))]))
+    )
+  return(table)
+}
+
+# Test with dummy data produced in gene_panel
+included_excluded_genes(mutsig2cv_file = coverage, panel_vector = gene_panel)
+
+```
+
+## General report and quality control of files
+Description of both coverage and covariate for quality control purposes including the number of genes in each file and the total number of features in each file. It can be run with both original files and modified targeted reduced files before running MutSig2CV.
+
+```{r quality control, echo = TRUE}
+#' quality_control
+#'
+#' @param covariate_df This parameter requires the dataframe used to export the covariate file modified for MutSig2CV.
+#' @param coverage_df This parameter requires the dataframe used to export the coverage file modified for MutSig2CV.
+#'
+#' @return Text with descriptive information of the files for quality control purpuses.
+#'
+#' @examples quality_control(covariate, coverage) # Both objects must be dataframes with the colnames expected by MutSig2CV
+quality_control <- function(covariate_df, coverage_df){
+  if (is.null(covariate_df) | is.null(coverage_df)) {
+    warning("Both files should be included")
+    stop()
+    
+  } else {
+    tibble(
+      file = c("coverage", "covariates"),
+      genes = c(length(unique(coverage_df$gene)), length(unique(covariate_df$gene))),
+      length_of_file = c(nrow(coverage_df), nrow(covariate_df))
+    )
+  }
+}
+
+quality_control(covariates, coverage)
+
+```
+
+### Session Info
+```{r session info , echo = TRUE}
+sessionInfo()
+```
