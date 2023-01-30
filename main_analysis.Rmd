@@ -1,0 +1,360 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r,  include = FALSE}
+install.packages("tidyverse")
+install.packages("dplyr")
+
+library(tidyverse)
+library(dplyr)
+```
+
+```{r, setup, include=FALSE}
+knitr::opts_knit$set(root.dir = "/PATH/")
+```
+
+```{r}
+BCAST_gene_panel <- as_tibble(read.table("/PATH/BCAST_genepanel.txt", 
+                              header = TRUE, stringsAsFactors = FALSE))
+MSK_Impact_extended_cols_fix <- function(dataset){
+  dataset %>%
+    dplyr::rename(
+      hugo_symbol = `Hugo Symbol`,
+      entrez_gene_id = `Entrez Gene ID`,
+      GRCh37_isoform = `GRCh37 Isoform`,
+      GRCh37_RefSeq = `GRCh37 RefSeq`,
+      GRCh38_isoform = `GRCh38 Isoform`,
+      GRCh38_RefSeq = `GRCh38 RefSeq`,
+      ocurrences_within_resources = `# of occurrence within resources (Column D-J)`,
+      OncoKB_annotated = `OncoKB Annotated`,
+      is_oncogene = `Is Oncogene`,
+      is_tumor_suppressor_gene = `Is Tumor Suppressor Gene`,
+      MSK_IMPACT = `MSK-IMPACT`,
+      MSK_HEME = `MSK-HEME`,
+      foundation_one = `FOUNDATION ONE`,
+      foundation_one_heme = `FOUNDATION ONE HEME`,
+      vogelstein = Vogelstein,
+      sanger_CGC = `SANGER CGC(05/30/2017)`,
+      gene_aliases = `Gene Aliases`
+    )
+}
+
+MSK_Impact_panel <- read_tsv("MSK_Impact_cancerGeneList.tsv") %>%
+  MSK_Impact_extended_cols_fix(.) %>% 
+  dplyr::filter(MSK_IMPACT == "Yes") %>%
+  dplyr::select(hugo_symbol, entrez_gene_id)
+
+```
+
+```{r}
+panel_genes <- list(
+  `B-CAST` = BCAST_gene_panel$gene_symbol,
+  `MSK-IMPACT` = MSK_Impact_panel$hugo_symbol
+)
+```
+
+```{r}
+method_col_mapping <- list(
+  MutSigCV = list(),
+  MutSigCV_TS = list(),
+  ActiveDriver = list(),
+  dNdScv = list(gene = "gene_name", p = "pglobal_cv"),
+  DriverML = list(p = "p_no_N_2s"),
+  OncodriveCLUSTL = list(gene = "SYMBOL", p = "P_ANALYTICAL"),
+  OncodriveFML = list(gene = "SYMBOL", p = "P_VALUE"),
+  `20/20+` = list(p = "combined p-value")
+)
+
+
+read_driver_results <- function (filename, method, panel=NULL) {
+  results <-
+    read_tsv(filename, show_col_types = FALSE) %>%
+    rename(!!!method_col_mapping[[method]]) %>%
+    select(gene, p)
+  
+  if (!is.null(panel)) {
+    results <-
+      results %>%
+      filter(gene %in% panel_genes[[panel]])
+  }
+  
+  results
+}
+```
+
+
+```{r}
+driver_result_files <- tribble(
+  ~filename, ~method, ~panel, ~cancer_type,
+  "/PATH/mutsig/TCGA_BRCA_mutsig_WE.sig_genes.txt", "MutSigCV", NA, "BRCA",
+  "/PATH/mutsig/TCGA_BRCA_mutsig_TGS_BCAST.sig_genes.txt", "MutSigCV", "B-CAST", "BRCA",
+  "/PATH/mutsig/TCGA_BRCA_mutsig_TGS_MSK.sig_genes.txt", "MutSigCV", "MSK-IMPACT", "BRCA",
+  "/PATH/mutsig/TCGA_LC_mutsig_WE.sig_genes.txt", "MutSigCV", NA, "LC",
+  "/PATH/mutsig/TCGA_LC_mutsig_TGS_MSK.sig_genes.txt", "MutSigCV", "MSK-IMPACT", "LC",
+  
+  "/PATH/mutsig_ts/TCGA_BRCA_mutsig_WE.sig_genes.txt", "MutSigCVts", NA, "BRCA",
+  "/PATH/mutsig_ts/TCGA_BRCA_mutsig_TGS_BCAST.sig_genes.txt", "MutSigCVts", "B-CAST", "BRCA",
+  "/PATH/mutsig_ts/TCGA_BRCA_mutsig_TGS_MSK.sig_genes.txt", "MutSigCVts", "MSK-IMPACT", "BRCA",
+  "/PATH/mutsig_ts/TCGA_LC_mutsig_WE.sig_genes.txt", "MutSigCVts", NA, "LC",
+  "/PATH/mutsig_ts/TCGA_LC_mutsig_TGS_MSK.sig_genes.txt", "MutSigCVts", "MSK-IMPACT", "LC",
+  
+  "/PATH/activedriver/TCGA_BRCA_activedriver_WE.txt", "ActiveDriver", NA, "BRCA",
+  "/PATH/activedriver/TCGA_BRCA_activedriver_TGS_BCAST.txt", "ActiveDriver", "B-CAST", "BRCA",
+  "/PATH/activedriver/TCGA_BRCA_activedriver_TGS_MSK.txt", "ActiveDriver", "MSK-IMPACT", "BRCA",
+  "/PATH/activedriver/TCGA_LC_activedriver_WE.txt", "ActiveDriver", NA, "LC",
+  "/PATH/activedriver/TCGA_LC_activedriver_TGS_MSK.txt", "ActiveDriver", "MSK-IMPACT", "LC",
+  
+  "/PATH/dndscv/TCGA_BRCA_dndscv_WE.tsv", "dNdScv", NA, "BRCA",
+  "/PATH/dndscv/TCGA_BRCA_dndscv_BCAST.tsv", "dNdScv", "B-CAST", "BRCA",
+  "/PATH/dndscv/TCGA_BRCA_dndscv_MSK.tsv", "dNdScv", "MSK-IMPACT", "BRCA",
+  "/PATH/dndscv/TCGA_LC_dndscv_WE.tsv", "dNdScv", NA, "LC",
+  "/PATH/dndscv/TCGA_LC_dndscv_MSK.tsv", "dNdScv", "MSK-IMPACT", "LC",
+  
+  "/PATH/driverml/TCGA_BRCA_driverml_WE", "DriverML", NA, "BRCA",
+  "/PATH/driverml/TCGA_BRCA_driverml_TGS_BCAST", "DriverML", "B-CAST", "BRCA",
+  "/PATH/driverml/TCGA_BRCA_driverml_TGS_MSK", "DriverML", "MSK-IMPACT", "BRCA",
+  "/PATH/driverml/TCGA_LC_driverml_WE", "DriverML", NA, "LC",
+  "/PATH/driverml/TCGA_LC_driverml_TGS_MSK", "DriverML", "MSK-IMPACT", "LC",
+  
+  "/PATH/oncodriveclustl/TCGA_BRCA_oncodriveclustl_WE/elements_results.txt", "OncodriveCLUSTL", NA, "BRCA",
+  "/PATH/oncodriveclustl/TCGA_BRCA_oncodriveclustl_TGS_BCAST/elements_results.txt", "OncodriveCLUSTL", "B-CAST", "BRCA",
+  "/PATH/oncodriveclustl/TCGA_BRCA_oncodriveclustl_TGS_MSK/elements_results.txt", "OncodriveCLUSTL", "MSK-IMPACT", "BRCA",
+  "/PATH/oncodriveclustl/TCGA_LC_oncodriveclustl_WE/elements_results.txt", "OncodriveCLUSTL", NA, "LC",
+  "/PATH/oncodriveclustl/TCGA_LC_oncodriveclustl_TGS_MSK/elements_results.txt", "OncodriveCLUSTL", "MSK-IMPACT", "LC",
+  
+  "/PATH/oncodrivefml/TCGA_BRCA_oncodrivefml_WE.tsv.gz", "OncodriveFML", NA, "BRCA",
+  "/PATH/oncodrivefml/TCGA_BRCA_oncodrivefml_TGS_BCAST.tsv.gz", "OncodriveFML", "B-CAST", "BRCA",
+  "/PATH/oncodrivefml/TCGA_BRCA_oncodrivefml_TGS_MSK.tsv.gz", "OncodriveFML", "MSK-IMPACT", "BRCA",
+  "/PATH/oncodrivefml/TCGA_LC_oncodrivefml_WE.tsv_WE.tsv.gz", "OncodriveFML", NA, "LC",
+  "/PATH/oncodrivefml/TCGA_LC_oncodrivefml_TGS_MSK.tsv.gz", "OncodriveFML", "MSK-IMPACT", "LC",
+  
+  "/PATH/plus2020/TCGA_BRCA_plus2020_WE/oncogene.txt", "20/20+", NA, "BRCA",
+  "/PATH/plus2020/TCGA_BRCA_plus2020_TGS_BCAST/oncogene.txt", "20/20+", "B-CAST", "BRCA",
+  "/PATH/plus2020/TCGA_BRCA_plus2020_TGS_MSK/oncogene.txt", "20/20+", "MSK-IMPACT", "BRCA",
+  "/PATH/plus2020/TCGA_LC_plus2020_WE/oncogene.txt", "20/20+", NA, "LC",
+  "/PATH/plus2020/TCGA_LC_plus2020_TGS_MSK/oncogene.txt", "20/20+", "MSK-IMPACT", "LC"
+)
+```
+
+
+```{r}
+ratio <- function (x, n) {
+  b <- binom.test(x, n)
+  list(estimate = unname(b$estimate), lb = b$conf.int[1], ub = b$conf.int[2])
+}
+```
+
+
+```{r}
+driver_results <-
+  driver_result_files %>%
+  pmap_df(
+    function (filename, method, panel, cancer_type) {
+      if (is.na(panel)) {
+        read_driver_results(filename, method) %>% mutate(method = method, cancer_type = cancer_type, panel = NA)
+      } else {
+        read_driver_results(filename, method, panel) %>% mutate(method = method, cancer_type = cancer_type, panel = panel)
+      }
+    }
+  )
+
+
+driver_results <-
+  driver_results %>%
+  filter(!is.na(panel)) %>%
+  left_join(
+    driver_results %>%
+      filter(is.na(panel)) %>%
+      select(-panel),
+    by=c("gene", "method", "cancer_type"),
+    suffix=c("_panel", "_wex")
+  )
+
+driver_results$method <- factor(driver_results$method, 
+                                levels = c("20/20+", "ActiveDriver", "dNdScv", "DriverML", "MutSigCV", 
+                                           "MutSigCVts", "OncodriveCLUSTL", "OncodriveFML"))
+```
+
+
+```{r fig.width=7, fig.height=8}
+figure_1 <- ggplot(driver_results, aes(x=p_wex, y=p_panel)) +
+  geom_point(size=1.3, alpha = 0.25) +
+  geom_abline(linetype="dashed", alpha = 0.5, size = 0.5) +
+  facet_grid(rows = vars(method), cols = vars(cancer_type, panel)) +
+  theme_light() + theme(panel.grid = element_blank()) + 
+  scale_y_continuous(name ="Targeted genome sequencing p-values", breaks = c(0, 0.5, 1)) +
+  scale_x_continuous(name ="Whole exome sequencing p-values", breaks = c(0, 0.5, 1))
+```
+
+
+```{r fig.height=5}
+figure_2 <- driver_results %>%
+  filter(!is.na(p_panel), !is.na(p_wex)) %>%  ##!!!!!
+  group_by(method, cancer_type, panel) %>%
+  mutate(
+    sig_wex = p.adjust(p_wex, "BH") < 0.01,
+    sig_panel = p.adjust(p_panel, "BH") < 0.01,
+  ) %>%
+  summarise(
+    Sensitivity = as_tibble(ratio(sum(sig_wex & sig_panel), sum(sig_wex))),
+    # specificity = as_tibble(ratio(sum(!sig_wex & !sig_panel), sum(!sig_wex))),
+    `False discovery rate` = as_tibble(ratio(sum(!sig_wex & sig_panel), sum(sig_panel)))
+  ) %>%
+  pivot_longer(c("Sensitivity", "False discovery rate")) %>% # "specificity" was removed
+  unpack(value, names_sep="_") %>%
+  
+  ggplot(aes(y = fct_rev(method), x=value_estimate)) +
+  geom_point(alpha = 0.7, size=2, show.legend = FALSE) +
+  theme_bw() +
+  geom_segment(aes(y=method, yend=method, x=value_lb, xend=value_ub), size=0.5, alpha = 0.7, show.legend = FALSE) +
+  # geom_text(aes(y=method, x=value_estimate, label = signif(value_estimate, 2)), size = 3, show.legend = FALSE, nudge_y = 0.5) +
+  facet_grid(vars(name), vars(cancer_type, panel), scales="free_x") + 
+  scale_y_discrete(name ="Methods") + scale_x_continuous(name ="Estimate")
+```
+
+
+```{ Supplementary_figure_1}
+maf_dataset <- read.maf(maf = "/PATH/mc3.v0.2.8.PUBLIC.maf") 
+maf_dataset_clinical <- readr::read_table("/PATH/clinical_PANCAN_patient_with_followup.tsv")
+
+maf_dataset@data %>%
+  select(Tumor_Sample_Barcode, Matched_Norm_Sample_Barcode, SYMBOL) %>%
+  mutate(bcr_patient_barcode = stringr::str_extract(Tumor_Sample_Barcode, '^([^-]+-[^-]+-[^-]+)')) %>%
+  inner_join(., BRCA, by = "bcr_patient_barcode") %>%
+  # filter(gender == "FEMALE") %>%
+  group_by(bcr_patient_barcode) %>% distinct(bcr_patient_barcode) %>%
+  summarise(n())
+
+clinical <- maf_dataset_clinical %>%
+  select(bcr_patient_uuid, bcr_patient_barcode, acronym) %>%
+  mutate(acronym = case_when(acronym == "LUAD" | acronym == "LUSC" ~ "LC", TRUE ~ acronym))
+
+#################################
+#################################
+
+supplementary_1_A <- maf_dataset@data %>%
+  select(Tumor_Sample_Barcode, SYMBOL, Hugo_Symbol, 
+         Entrez_Gene_Id, Chromosome, Start_Position, End_Position) %>%
+  mutate(bcr_patient_barcode = stringr::str_extract(Tumor_Sample_Barcode, '^([^-]+-[^-]+-[^-]+)')) %>%
+  inner_join(., clinical, by = "bcr_patient_barcode") %>%
+  mutate(labeller = case_when(acronym == "BRCA" | acronym == "LC" ~ 1, TRUE ~ 0)) %>%
+  group_by(bcr_patient_barcode, acronym, labeller) %>%
+  summarise(n = n()) %>%
+  ggplot(mapping = aes(x = reorder(acronym, -n), y = log10(n), fill = as.factor(labeller))) + 
+  geom_boxplot(alpha = 0.8, show.legend = F) + theme_bw() + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)) + 
+  scale_fill_manual(values=c("#eeeeee","#444444")) + 
+  xlab("Cancer Type") + ylab("Log10(Mutation count)")
+
+supplementary_1_B <- maf_dataset@data %>%
+  select(Tumor_Sample_Barcode, SYMBOL, Hugo_Symbol, 
+         Entrez_Gene_Id, Chromosome, Start_Position, End_Position) %>%
+  mutate(bcr_patient_barcode = stringr::str_extract(Tumor_Sample_Barcode, '^([^-]+-[^-]+-[^-]+)')) %>%
+  inner_join(., clinical, by = "bcr_patient_barcode") %>%
+  mutate(labeller = case_when(acronym == "BRCA" | acronym == "LC" ~ 1, TRUE ~ 0)) %>%
+  group_by(acronym, labeller) %>% summarise(n = n_distinct(bcr_patient_barcode)) %>%
+  ggplot(mapping = aes(x = reorder(acronym, -n), y = n, fill = as.factor(labeller))) + 
+  geom_col(show.legend = F) + theme_bw() + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)) + 
+  scale_fill_manual(values=c("#bcbcbc","#444444")) + 
+  xlab("Cancer Type") + ylab("Number of samples") + 
+  scale_y_continuous(expand = c(0,0), limits = c(0,1050))
+
+p = list(supplementary_1_A, supplementary_1_B) %>%
+  map(~.x + labs(x = NULL))
+grid_plot <- grid.arrange(grobs = p,
+             ncol = 2, nrow = 1, bottom = "Cancer type")
+```
+
+
+```{r supplementary_figure_2, fig.height=5}
+supplementary_figure_2 <- driver_results %>%
+  filter(!is.na(p_panel), !is.na(p_wex)) %>%  ##!!!!!
+  group_by(method, cancer_type, panel) %>%
+  mutate(
+    sig_wex = p.adjust(p_wex, "BH") < 0.05,
+    sig_panel = p.adjust(p_panel, "BH") < 0.05,
+  ) %>%
+  summarise(
+    Sensitivity = as_tibble(ratio(sum(sig_wex & sig_panel), sum(sig_wex))),
+    # specificity = as_tibble(ratio(sum(!sig_wex & !sig_panel), sum(!sig_wex))),
+    `False discovery rate` = as_tibble(ratio(sum(!sig_wex & sig_panel), sum(sig_panel)))
+  ) %>%
+  pivot_longer(c("Sensitivity", "False discovery rate")) %>% # "specificity" was removed
+  unpack(value, names_sep="_") %>%
+  
+  ggplot(aes(y = fct_rev(method), x = value_estimate)) +
+  geom_point(alpha = 0.7, size=2, show.legend = FALSE) +
+  theme_bw() +
+  geom_segment(aes(y=method, yend=method, x=value_lb, xend=value_ub), size=0.5, alpha = 0.7, show.legend = FALSE) +
+  # geom_text(aes(y=method, x=value_estimate, label = signif(value_estimate, 2)), size = 3, show.legend = FALSE, nudge_y = 0.5) +
+  facet_grid(vars(name), vars(cancer_type, panel), scales="free_x") + 
+  scale_y_discrete(name ="Methods") + scale_x_continuous(name ="Estimate")
+```
+
+
+```{r supplementary_table_2}
+sup_table2 <- driver_results %>%
+  filter(!is.na(p_panel), !is.na(p_wex)) %>%  ##!!!!!
+  group_by(method, cancer_type, panel) %>%
+  summarise(
+    mean_abs_error = mean(abs(p_panel - p_wex))
+  ) %>%
+  pivot_longer(mean_abs_error) %>%
+  unpack(value, names_sep="_")
+
+sup_table2 <- sup_table2 %>% unite("merged", c(cancer_type, panel), remove = TRUE) %>%
+  select(-name) %>% pivot_wider(names_from = merged, values_from = value)
+```
+
+
+```{r supplementary_table_3}
+sup_table3_a01 <- driver_results %>%
+  filter(!is.na(p_panel), !is.na(p_wex)) %>% 
+  group_by(method, cancer_type, panel) %>%
+  mutate(
+    sig_wex = p.adjust(p_wex, "BH") < 0.01, 
+    sig_panel = p.adjust(p_panel, "BH") < 0.01, 
+  ) %>%
+  summarise(
+    sensitivity = as_tibble(ratio(sum(sig_wex & sig_panel), sum(sig_wex))),
+    fdr = as_tibble(ratio(sum(!sig_wex & sig_panel), sum(sig_panel)))
+  ) %>%
+  pivot_longer(c("sensitivity", "fdr")) %>% # "specificity" was removed
+  unpack(value, names_sep="_")
+
+sup_table3_a01 <- sup_table3_a01 %>% unite("merged", c(cancer_type, panel, name), remove = TRUE)
+
+
+sup_table3_b05 <- driver_results %>%
+  filter(!is.na(p_panel), !is.na(p_wex)) %>% 
+  group_by(method, cancer_type, panel) %>%
+  mutate(
+    sig_wex = p.adjust(p_wex, "BH") < 0.05, 
+    sig_panel = p.adjust(p_panel, "BH") < 0.05, 
+  ) %>%
+  summarise(
+    sensitivity = as_tibble(ratio(sum(sig_wex & sig_panel), sum(sig_wex))),
+    fdr = as_tibble(ratio(sum(!sig_wex & sig_panel), sum(sig_panel)))
+  ) %>%
+  pivot_longer(c("sensitivity", "fdr")) %>% # "specificity" was removed
+  unpack(value, names_sep="_")
+
+sup_table3_b05 <- sup_table3_b05 %>% unite("merged", c(cancer_type, panel, name), remove = TRUE)
+
+```
+
+
+```{r supplementary_table_4}
+## Table for targeted datasets BH < 0.01
+sup_table4 <- driver_results %>%
+  filter(!is.na(p_panel), !is.na(p_wex)) %>%  ##!!!!!
+  group_by(method, cancer_type, panel) %>%
+  mutate(
+    sig_wex = p.adjust(p_wex, "BH") < 0.01,
+    sig_panel = p.adjust(p_panel, "BH") < 0.01,
+  ) %>%
+  summarise(significant_genes_0.01FDR = sum(sig_panel))
+```
