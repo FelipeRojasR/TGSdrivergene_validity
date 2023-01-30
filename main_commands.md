@@ -60,9 +60,10 @@ bash PATH/run.driverml.sh -w PATH/DriverML-master -i INPUT -f hg19.fa -r hg19.fa
 bash run_MutSigCV.sh matlab_runtime/v901 INPUT exome_completeTCGA_full192.coverage.txt gene.covariates.txt OUTPUT mutation_type_dictionary_file.txt chr_files_hg19
 ```
 
-#### [MutSigCV_TS]
-Refer to the scripts/mutsig2cv_adaptation.Rmd 
-
+#### MutSigCV_TS
+```
+Refer to the scripts/mutsig2cv_adaptation.Rmd # please email the authors to gain access to the modified covariate and coverage files.
+```
 
 #### [OncodriveCLUSTL](https://bitbucket.org/bbglab/oncodriveclustl/src/master/)
 ```
