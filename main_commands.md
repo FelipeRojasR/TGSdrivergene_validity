@@ -1,5 +1,5 @@
 # Methods for driver detection
-These are the list of commands used to generate all the results in the manuscript.
+These are the main list of commands used to generate all the results in the manuscript. Detailed scripting is available in scripts folder 
 
 #### [20/20+](https://2020plus.readthedocs.io/en/latest/)
 ```

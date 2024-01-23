@@ -1,0 +1,21 @@
+cancer_type = ["BRCA", "LC", "GBM", "OV", "UCEC", "KIRC", "HNSC", "LGG", "THCA", "PRAD", "SKCM", "COAD", "STAD", "BLCA"]
+panel = ["MSK", "WE"]
+
+# Define paths for data directories
+PATH_master = 'PATH/'
+
+rule all:
+  input:
+    expand(PATH_master+'/data/original_files/{panel}_{cancer_type}_TCGA_mutational.tsv', panel = panel, cancer_type = cancer_type),
+    expand(PATH_master+'/results/dndscv/{panel}_{cancer_type}_dndscv', panel = panel, cancer_type = cancer_type)
+    
+rule activedriver:
+  input: 
+    PATH_master+'/data/original_files/{panel}_{cancer_type}_TCGA_mutational.tsv'
+  output: 
+    PATH_master+'/results/dndscv/{panel}_{cancer_type}_dndscv'
+  params:
+    script = PATH_master+'/scripts/dndscv/dndscv_complete.R',
+    panel = lambda wildcards: wildcards.panel
+  shell: 
+    "OMP_NUM_THREADS=1 Rscript {params.script} -i {input} -p {params.panel} -o {output}"

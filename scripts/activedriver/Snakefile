@@ -1,0 +1,34 @@
+cancer_type = ["BRCA", "GBM", "OV", "UCEC", "KIRC", "HNSC", "LGG", "THCA", "PRAD", "SKCM", "COAD", "STAD", "BLCA"]
+panel = ["MSK", "WE"]
+
+# Define paths for data directories
+PATH_master = 'PATH/'
+
+rule all:
+  input:
+    expand(PATH_master+'/data/original_files/{panel}_{cancer_type}_TCGA_mutational.tsv', panel = panel, cancer_type = cancer_type),
+    expand(PATH_master+'/data/activedriver/{panel}_{cancer_type}_processed.txt', panel = panel, cancer_type = cancer_type),
+    expand(PATH_master+'/results/activedriver/{panel}_{cancer_type}_output_activedriver', panel = panel, cancer_type = cancer_type)
+
+
+rule processing:
+  input:
+    PATH_master+'/data/original_files/{panel}_{cancer_type}_TCGA_mutational.tsv'
+  output:
+    PATH_master+'/data/activedriver/{panel}_{cancer_type}_processed.txt'
+  params:
+    type = lambda wildcards: wildcards.cancer_type,
+    script = PATH_master+'/scripts/activedriver/preprocess.R'
+  shell:
+    "OMP_NUM_THREADS=1 Rscript {params.script} {input} {params.type} {output}"
+
+
+rule activedriver:
+  input: 
+    PATH_master+'/data/activedriver/{panel}_{cancer_type}_processed.txt'
+  output: 
+    PATH_master+'/results/activedriver/{panel}_{cancer_type}_output_activedriver'
+  params:
+    script = PATH_master+'/scripts/activedriver/activedriver_main_MODIFIED.R'
+  shell: 
+    "OMP_NUM_THREADS=1 Rscript {params.script} {input} {output}"
